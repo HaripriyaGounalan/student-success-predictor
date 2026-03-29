@@ -24,6 +24,7 @@ class DataExplorer:
         self.data_path = data_path
         self.df: pd.DataFrame = None
         self.missing_values: pd.Series = None
+        self.quality_summary: dict = {}
         self.target_column = "first_year_persistence"
         self.original_columns: list[str] = []
         self.derived_columns = ["GPA_BAND", "MARK_BAND", "MATH_BAND"]
@@ -132,6 +133,7 @@ class DataExplorer:
             "grouped_analysis",
             "persistence_analysis",
             "age_analysis",
+            "quality_analysis",
         ]
         for dir_path in dirs:
             (INSIGHTS_DIR / dir_path).mkdir(parents=True, exist_ok=True)
@@ -221,6 +223,148 @@ class DataExplorer:
         logging.info(target_distribution)
 
         return self.missing_values
+
+    def _get_quality_rules(self) -> dict:
+        """Return expected value rules for quality checks."""
+        return {
+            "first_term_gpa": {
+                "min": 0,
+                "max": 4.5,
+                "description": "First term GPA should be between 0 and 4.5",
+            },
+            "second_term_gpa": {
+                "min": 0,
+                "max": 4.5,
+                "description": "Second term GPA should be between 0 and 4.5",
+            },
+            "high_school_average_mark": {
+                "min": 0,
+                "max": 100,
+                "description": "High school average mark should be between 0 and 100",
+            },
+            "math_score": {
+                "min": 0,
+                "max": 50,
+                "description": "Math score should be between 0 and 50",
+            },
+            "first_year_persistence": {
+                "allowed": set(self.category_mappings[self.target_column].keys()),
+                "description": "Persistence should be encoded as 0 or 1",
+            },
+            "first_language": {
+                "allowed": set(self.category_mappings["first_language"].keys()),
+                "description": "First language should match encoded categories",
+            },
+            "funding": {
+                "allowed": set(self.category_mappings["funding"].keys()),
+                "description": "Funding code should match encoded categories",
+            },
+            "school": {
+                "allowed": set(self.category_mappings["school"].keys()),
+                "description": "School code should match encoded categories",
+            },
+            "fast_track": {
+                "allowed": set(self.category_mappings["fast_track"].keys()),
+                "description": "Fast track flag should be encoded as 1 or 2",
+            },
+            "coop": {
+                "allowed": set(self.category_mappings["coop"].keys()),
+                "description": "Co-op flag should be encoded as 1 or 2",
+            },
+            "residency": {
+                "allowed": set(self.category_mappings["residency"].keys()),
+                "description": "Residency code should match encoded categories",
+            },
+            "gender": {
+                "allowed": set(self.category_mappings["gender"].keys()),
+                "description": "Gender code should match encoded categories",
+            },
+            "previous_education": {
+                "allowed": set(self.category_mappings["previous_education"].keys()),
+                "description": "Previous education code should match encoded categories",
+            },
+            "age_group": {
+                "allowed": set(self.category_mappings["age_group"].keys()),
+                "description": "Age group code should match encoded categories",
+            },
+            "english_grade": {
+                "allowed": set(self.category_mappings["english_grade"].keys()),
+                "description": "English grade code should match encoded categories",
+            },
+        }
+
+    def analyze_data_quality(self) -> dict:
+        """Analyze data quality issues such as repeated rows and out-of-range values."""
+        logging.info("\n=== Running Data Quality Checks ===")
+
+        quality_dir = INSIGHTS_DIR / "quality_analysis"
+        source_df = self.df[self.original_columns].copy()
+
+        # Identify exact duplicated rows across original variables.
+        duplicate_mask = source_df.duplicated(keep=False)
+        duplicate_rows = source_df[duplicate_mask].copy()
+        duplicate_count = int(duplicate_mask.sum())
+        duplicate_groups = 0
+        duplicate_path = quality_dir / "duplicate_rows.csv"
+
+        if duplicate_count > 0:
+            signatures = duplicate_rows.astype(str).agg("|".join, axis=1)
+            duplicate_rows.insert(0, "duplicate_group_id", signatures.factorize()[0] + 1)
+            duplicate_groups = int(duplicate_rows["duplicate_group_id"].nunique())
+            duplicate_rows.to_csv(duplicate_path, index_label="row_index")
+
+        rules = self._get_quality_rules()
+        rule_results: list[dict] = []
+        for column in self.original_columns:
+            rule = rules.get(column)
+            if column not in source_df.columns:
+                continue
+
+            if rule is None:
+                rule_results.append(
+                    {
+                        "column": column,
+                        "rule": "no rule defined",
+                        "exceeded_count": 0,
+                    }
+                )
+                continue
+
+            series = pd.to_numeric(source_df[column], errors="coerce")
+            not_missing_mask = series.notna()
+
+            if "allowed" in rule:
+                invalid_mask = not_missing_mask & (~series.isin(rule["allowed"]))
+                rule_text = f"allowed values: {sorted(rule['allowed'])}"
+            else:
+                invalid_mask = not_missing_mask & ((series < rule["min"]) | (series > rule["max"]))
+                rule_text = f"range: [{rule['min']}, {rule['max']}]"
+
+            rule_results.append(
+                {
+                    "column": column,
+                    "rule": rule_text,
+                    "exceeded_count": int(invalid_mask.sum()),
+                }
+            )
+
+        out_of_range_total = int(sum(item["exceeded_count"] for item in rule_results))
+
+        self.quality_summary = {
+            "duplicate_rows": duplicate_count,
+            "duplicate_groups": duplicate_groups,
+            "out_of_range_total": out_of_range_total,
+            "rule_violations": rule_results,
+            "duplicate_file": str(duplicate_path),
+        }
+
+        logging.info(f"Repeated rows (exact duplicates): {duplicate_count}")
+        if duplicate_count > 0:
+            logging.info(f"Duplicate rows saved to {duplicate_path}")
+
+        logging.info(f"Out-of-range records: {out_of_range_total}")
+
+        return self.quality_summary
 
     def analyze_correlations(self) -> tuple[pd.Series, dict]:
         """Create and save correlation matrices.
@@ -410,15 +554,8 @@ class DataExplorer:
         )
 
     def _plot_bar(self, data: pd.DataFrame, x: str, hue: str, title: str, filename: str) -> None:
-        """Helper function to create and save bar plots.
-
-        Args:
-            data: DataFrame containing the data to plot
-            x: Column name for x-axis
-            hue: Column name for hue (stacked bars)
-            title: Title of the plot
-            filename: Filename to save the plot
-        """
+        """Helper function to create and save bar plots."""
+        
         plt.figure(figsize=(12, 6))
         plot_data = pd.crosstab(data[x], data[hue])
 
@@ -433,7 +570,7 @@ class DataExplorer:
                 self.category_mappings[x].get(int(value), value)
                 if pd.notna(value) else value
                 for value in plot_data.index
-        ]
+            ]
             
         plot_data.plot(kind="bar", stacked=True)
         plt.title(title)
@@ -493,6 +630,37 @@ class DataExplorer:
                     f"{count:,} ({percentage:.2f}%)\n"
                 )
 
+            f.write("\n## Data Quality Checks\n")
+            if self.quality_summary:
+                f.write(
+                    f"- Repeated rows (exact duplicates): "
+                    f"{self.quality_summary.get('duplicate_rows', 0):,}\n"
+                )
+                f.write(
+                    f"- Duplicate groups: "
+                    f"{self.quality_summary.get('duplicate_groups', 0):,}\n"
+                )
+                f.write(
+                    f"- Out-of-range records: "
+                    f"{self.quality_summary.get('out_of_range_total', 0):,}\n"
+                )
+
+                rule_violations = self.quality_summary.get("rule_violations", [])
+                if rule_violations:
+                    f.write("\nRange/Rule checks across all variables:\n")
+                    for item in rule_violations:
+                        f.write(
+                            f"- {item['column']}: {item['rule']} | "
+                            f"exceeded: {item['exceeded_count']:,}\n"
+                        )
+
+                f.write(
+                    "\nDetailed files:\n"
+                    "- insights/quality_analysis/duplicate_rows.csv\n"
+                )
+            else:
+                f.write("- Quality analysis was not run.\n")
+
             f.write("\n## Generated Visualizations\n")
             f.write("### Correlation Analysis\n")
             f.write("- Full correlation matrices\n")
@@ -516,6 +684,7 @@ class DataExplorer:
         """Run all analysis steps."""
         self.load_data()
         self.analyze_basic_stats()
+        self.analyze_data_quality()
         self.analyze_correlations()
         self.analyze_persistence_patterns()
         self.analyze_grouped_patterns()
