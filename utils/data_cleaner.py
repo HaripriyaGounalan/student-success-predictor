@@ -1,84 +1,149 @@
 import pandas as pd
 import numpy as np
 
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+from sklearn.impute import IterativeImputer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import BayesianRidge
+from sklearn.preprocessing import StandardScaler
 
 class DataCleaner:
-    """Preprocess student data for neural network modeling."""
+    def __init__(self, numeric_imputer: str = "bayesian", random_state: int = 42):
+        self.numeric_imputer = numeric_imputer.lower()
+        self.random_state = random_state
 
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
+        self.numeric_cols = [
+            "first_term_gpa",
+            "second_term_gpa",
+            "high_school_average_mark",
+            "math_score",
+        ]
+        self.binary_cols = ["fast_track", "coop", "residency"]
+        self.nominal_cols = ["first_language", "funding", "gender", "previous_education"]
+        self.ordinal_cols = ["age_group", "english_grade"]
 
+        self.missing_flag_cols = [
+            "first_term_gpa",
+            "second_term_gpa",
+            "high_school_average_mark",
+            "math_score",
+            "first_language",
+            "funding",
+            "gender",
+            "previous_education",
+            "age_group",
+            "english_grade",
+        ]
 
-    def clean(self) -> pd.DataFrame:
-        # 1. Replace ? with NaN, convert to numeric, remove duplicates, drop non-informative column
-        clean_df = self.df.replace("?", np.nan).apply(pd.to_numeric, errors="coerce").drop_duplicates()
-        clean_df = clean_df.drop(columns=["school"], errors="ignore")
+        self.imputer = None
+        self.scaler = None
+        self.feature_columns_ = None
+        self.is_fitted_ = False
 
-        # 2. Define variable groups
-        numeric_cols = ["first_term_gpa", "second_term_gpa", "high_school_average_mark", "math_score"]
-        binary_cols = ["fast_track", "coop", "residency"]
-        nominal_cols = ["first_language", "funding", "gender", "previous_education"]
-        ordinal_cols = ["age_group", "english_grade"]
-        target_col = "first_year_persistence"
+    def _check_required_columns(self, df: pd.DataFrame) -> None:
+        required = (
+            self.numeric_cols
+            + self.binary_cols
+            + self.nominal_cols
+            + self.ordinal_cols
+        )
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
 
-        # 3. Validate coded values (invalid -> NaN)
-        clean_df["first_language"] = clean_df["first_language"].where(clean_df["first_language"].isin([1, 2, 3]), np.nan)
-        clean_df["funding"] = clean_df["funding"].where(clean_df["funding"].isin(range(1, 10)), np.nan)
-        clean_df["gender"] = clean_df["gender"].where(clean_df["gender"].isin([1, 2, 3]), np.nan)
-        clean_df["previous_education"] = clean_df["previous_education"].where(clean_df["previous_education"].isin([1, 2]), np.nan)
-        clean_df["age_group"] = clean_df["age_group"].where(clean_df["age_group"].isin(range(1, 11)), np.nan)
-        clean_df["english_grade"] = clean_df["english_grade"].where(clean_df["english_grade"].isin(range(1, 12)), np.nan)
+    def _get_estimator(self):
+        """ decide which estimator to use for numeric imputation based on the numeric_imputer parameter """
+        if self.numeric_imputer == "random_forest":
+            return RandomForestRegressor(
+                n_estimators=50,
+                random_state=self.random_state
+            )
+        if self.numeric_imputer == "bayesian":
+            return BayesianRidge()
+        raise ValueError("numeric_imputer must be 'bayesian' or 'random_forest'")
 
-        # 4. Convert binary variables (1/2 -> 1/0)
-        for col in binary_cols:
-            clean_df[col] = clean_df[col].map({1: 1, 2: 0})
+    def _clean_raw(self, df: pd.DataFrame, drop_duplicates: bool = False) -> pd.DataFrame:
+        """ basic cleaning of raw data: replace "?" with NaN, convert to numeric, create missing flags, and handle missing values."""
+        df = df.copy().replace("?", np.nan)
 
-        # 5. Apply logical bounds to numeric variables
-        clean_df["high_school_average_mark"] = clean_df["high_school_average_mark"].clip(0, 100)
+        if drop_duplicates:
+            df = df.drop_duplicates().copy()
 
-        # 6. Create missing flags
-        clean_df["second_term_gpa_missing"] = clean_df["second_term_gpa"].isna().astype(int)
-        clean_df["high_school_average_mark_missing"] = clean_df["high_school_average_mark"].isna().astype(int)
-        clean_df["math_score_missing"] = clean_df["math_score"].isna().astype(int)
+        self._check_required_columns(df)
 
-        # 7. Impute numeric and ordinal variables
-        for col in numeric_cols:
-            clean_df[col] = clean_df[col].fillna(clean_df[col].median())
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        for col in ordinal_cols:
-            clean_df[col] = clean_df[col].fillna(clean_df[col].mode()[0])
+        df = df.drop(columns=["school"], errors="ignore")
 
-        # 8. Map coded categories to labels
-        clean_df["first_language"] = clean_df["first_language"].map({
-            1: "English", 2: "French", 3: "Other"
-        })
-        clean_df["funding"] = clean_df["funding"].map({
-            1: "Apprentice_PS",
-            2: "GPOG_FT",
-            3: "Intl_Offshore",
-            4: "Intl_Regular",
-            5: "Intl_Transfer",
-            6: "Joint_Ryerson",
-            7: "Joint_UTSC",
-            8: "Second_Career",
-            9: "Work_Safety"
-        })
-        clean_df["gender"] = clean_df["gender"].map({
-            1: "Female", 2: "Male", 3: "Neutral"
-        })
-        clean_df["previous_education"] = clean_df["previous_education"].map({
-            1: "Yes", 2: "No"
-        })
+        for col in self.binary_cols:
+            df[col] = df[col].map({1: 1, 2: 0})
 
-        # 9. Fill nominal missing with explicit category
-        for col in nominal_cols:
-            clean_df[col] = clean_df[col].fillna("Missing")
+        for col in self.missing_flag_cols:
+            df[f"{col}_missing"] = df[col].isna().astype(int)
 
-        # 10. Clean target variable
-        clean_df = clean_df[clean_df[target_col].isin([0, 1])]
-        clean_df[target_col] = clean_df[target_col].astype(int)
+        # Ordinal: reserve 0 for missing
+        df[self.ordinal_cols] = df[self.ordinal_cols].fillna(0).astype(int)
 
-        # 11. One-hot encode nominal variables
-        clean_df = pd.get_dummies(clean_df, columns=nominal_cols, drop_first=False)
+        # Nominal coded values
+        other_nominal_cols = [col for col in self.nominal_cols if col != "previous_education"]
+        df[other_nominal_cols] = df[other_nominal_cols].fillna(0).astype(int)   # 0 = Missing
+        df["previous_education"] = df["previous_education"].fillna(3).astype(int)  # 0 = Unknown, 3 = Missing
 
-        return clean_df
+        return df
+
+    def _clip_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
+        """clipping out of range values for numeric columns based on given constraints """
+        df["first_term_gpa"] = df["first_term_gpa"].clip(0, 4.5)
+        df["second_term_gpa"] = df["second_term_gpa"].clip(0, 4.5)
+        df["high_school_average_mark"] = df["high_school_average_mark"].clip(0, 100)
+        df["math_score"] = df["math_score"].clip(0, 50)
+        return df
+
+    def _encode_nominals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """one-hot encode nominal columns"""
+        return pd.get_dummies(df, columns=self.nominal_cols, drop_first=False)
+
+    def fit(self, X_train: pd.DataFrame):
+        """ fit the imputer and scaler on the training data, and determine the final feature columns after encoding """
+        df = self._clean_raw(X_train, drop_duplicates=True)
+
+        self.imputer = IterativeImputer(
+            estimator=self._get_estimator(),
+            max_iter=15,
+            random_state=self.random_state,
+            initial_strategy="median"
+        )
+
+        df[self.numeric_cols] = self.imputer.fit_transform(df[self.numeric_cols])
+        df = self._clip_numeric(df)
+
+        self.scaler = StandardScaler()
+        df[self.numeric_cols] = self.scaler.fit_transform(df[self.numeric_cols])
+
+        df = self._encode_nominals(df)
+
+        self.feature_columns_ = df.columns.tolist()
+        self.is_fitted_ = True
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """ apply the same transformations to new data, used for validation and testing """
+        if not self.is_fitted_:
+            raise ValueError("Call fit() before transform().")
+
+        df = self._clean_raw(X, drop_duplicates=False)
+
+        df[self.numeric_cols] = self.imputer.transform(df[self.numeric_cols])
+        df = self._clip_numeric(df)
+        df[self.numeric_cols] = self.scaler.transform(df[self.numeric_cols])
+
+        df = self._encode_nominals(df)
+
+        df = df.reindex(columns=self.feature_columns_, fill_value=0)
+        return df
+
+    def fit_transform(self, X_train: pd.DataFrame) -> pd.DataFrame:
+        """method to fit and transform the training data in one step, for convenience during model training"""
+        self.fit(X_train)
+        return self.transform(X_train)
