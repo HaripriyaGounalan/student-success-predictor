@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-INSIGHTS_DIR = Path("insights")
+INSIGHTS_DIR = Path(__file__).resolve().parents[1] / "insights"
 
 
 class DataExplorer:
