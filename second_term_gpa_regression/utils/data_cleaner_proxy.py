@@ -15,15 +15,17 @@ class DataCleaner:
 
         self.numeric_cols = [
             "first_term_gpa",
+            "second_term_gpa",
             "high_school_average_mark",
             "math_score",
         ]
-        self.binary_cols = ["fast_track", "coop", "residency"]
-        self.nominal_cols = ["first_language", "funding", "gender", "previous_education"]
+        self.binary_cols = ["fast_track", "coop", "residency", "first_year_persistence"]
+        self.nominal_cols = ["first_language", "funding", "gender", "previous_education", "gpa_category"]
         self.ordinal_cols = ["age_group", "english_grade"]
 
         self.missing_flag_cols = [
             "first_term_gpa",
+            "second_term_gpa",
             "high_school_average_mark",
             "math_score",
             "first_language",
@@ -43,8 +45,9 @@ class DataCleaner:
         self.is_fitted_ = False
 
     def _check_required_columns(self, df: pd.DataFrame) -> None:
+        # gpa_category is derived later from first_term_gpa, so it should not be
         # required in the raw dataset passed into the cleaner.
-        raw_nominal_cols = [col for col in self.nominal_cols ]
+        raw_nominal_cols = [col for col in self.nominal_cols if col != "gpa_category"]
         required = self.numeric_cols + self.binary_cols + raw_nominal_cols + self.ordinal_cols
         missing = [col for col in required if col not in df.columns]
         if missing:
@@ -73,8 +76,12 @@ class DataCleaner:
         for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
+        # for col in self.binary_cols: # but not first_year_persistence
+        #     df[col] = df[col].map({1: 1, 2: 0})
+
         for col in self.binary_cols:
-            df[col] = df[col].map({1: 1, 2: 0})
+            if col not in {"first_year_persistence"}:  # Don't map first_year_persistence to binary 
+                df[col] = df[col].map({1: 1, 2: 0})
 
         for col in self.missing_flag_cols:
             df[f"{col}_missing"] = df[col].isna().astype(int)
@@ -86,18 +93,36 @@ class DataCleaner:
             df["age_group"] = self.age_imputer.transform(df[["age_group"]]).ravel()
             df["english_grade"] = self.eng_imputer.transform(df[["english_grade"]]).ravel()
 
-        # Nominal columns
+        # Nominal coded values present in the raw dataset. gpa_category is
+        # created later from first_term_gpa and should not be referenced here.
         raw_nominal_cols = [
-            col for col in self.nominal_cols if col not in {"previous_education"}
+            col for col in self.nominal_cols if col not in {"previous_education", "gpa_category"}
         ]
         df[raw_nominal_cols] = df[raw_nominal_cols].fillna(0).astype(int)   # 0 = Missing
         df["previous_education"] = df["previous_education"].fillna(3).astype(int)  # 0 = Unknown, 3 = Missing
 
         return df
     
+    def _add_gpa_category(self, df: pd.DataFrame) -> pd.DataFrame:
+        """create GPA categorical feature including Zero / Low / Medium / High"""
+
+        def categorize(gpa):
+            if gpa == 0:
+                return 0  # Zero
+            elif gpa < 2.0:
+                return 1  # Low
+            elif gpa < 3.0:
+                return 2  # Medium
+            else:
+                return 3  # High
+            
+        df["gpa_category"] = ((df["first_term_gpa"] + df["second_term_gpa"]) / 2).apply(categorize)
+        return df
+
     def _clip_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
         """clipping out of range values for numeric columns based on given constraints """
         df["first_term_gpa"] = df["first_term_gpa"].clip(0, 4.5)
+        df["second_term_gpa"] = df["second_term_gpa"].clip(0, 4.5)
         df["high_school_average_mark"] = df["high_school_average_mark"].clip(0, 100)
         df["math_score"] = df["math_score"].clip(0, 50)
         return df
@@ -120,6 +145,8 @@ class DataCleaner:
         df[self.numeric_cols] = self.imputer.fit_transform(df[self.numeric_cols])
         df = self._clip_numeric(df)
 
+        df = self._add_gpa_category(df) # add GPA category based on first_term_gpa values
+
         self.scaler = StandardScaler()
         df[self.numeric_cols] = self.scaler.fit_transform(df[self.numeric_cols])
 
@@ -139,6 +166,8 @@ class DataCleaner:
         df[self.numeric_cols] = self.imputer.transform(df[self.numeric_cols])
 
         df = self._clip_numeric(df)
+
+        df = self._add_gpa_category(df) # add GPA category based on first_term_gpa values
 
         df[self.numeric_cols] = self.scaler.transform(df[self.numeric_cols])
 

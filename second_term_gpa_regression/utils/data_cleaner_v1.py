@@ -8,6 +8,7 @@ from sklearn.linear_model import BayesianRidge
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 
+
 class DataCleaner:
     def __init__(self, numeric_imputer: str = "bayesian", random_state: int = 42):
         self.numeric_imputer = numeric_imputer.lower()
@@ -19,18 +20,33 @@ class DataCleaner:
             "math_score",
         ]
         self.binary_cols = ["fast_track", "coop", "residency"]
-        self.nominal_cols = ["first_language", "funding", "gender", "previous_education"]
-        self.ordinal_cols = ["age_group", "english_grade"]
-
-        self.missing_flag_cols = [
-            "first_term_gpa",
-            "high_school_average_mark",
-            "math_score",
+        self.nominal_cols = [
             "first_language",
             "funding",
             "gender",
             "previous_education",
-            "age_group",
+            "gpa_category",
+        ]
+        self.ordinal_cols = ["age_group", "english_grade"]
+        self.raw_nominal_cols = [col for col in self.nominal_cols if col != "gpa_category"]
+        self.zero_fill_nominal_cols = [
+            col for col in self.raw_nominal_cols if col != "previous_education"
+        ]
+        self.engineered_feature_cols = [
+            "hs_math_interaction",
+            "gpa_hs_interaction",
+            "gpa_math_interaction",
+            "gpa_english_interaction",
+            "first_term_gpa_sq",
+            "preparedness_gap",
+            "hs_math_gap",
+    
+        ]
+        self.scaled_cols = self.numeric_cols + self.engineered_feature_cols
+
+        # keeping missing values for missingness above 30%
+        self.missing_flag_cols = [
+            "high_school_average_mark",
             "english_grade",
         ]
 
@@ -43,26 +59,26 @@ class DataCleaner:
         self.is_fitted_ = False
 
     def _check_required_columns(self, df: pd.DataFrame) -> None:
+        # gpa_category is derived later from first_term_gpa, so it should not be
         # required in the raw dataset passed into the cleaner.
-        raw_nominal_cols = [col for col in self.nominal_cols ]
-        required = self.numeric_cols + self.binary_cols + raw_nominal_cols + self.ordinal_cols
+        required = self.numeric_cols + self.binary_cols + self.raw_nominal_cols + self.ordinal_cols
         missing = [col for col in required if col not in df.columns]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
 
     def _get_estimator(self):
-        """ decide which estimator to use for numeric imputation based on the numeric_imputer parameter """
+        """Choose the estimator used by the numeric imputer."""
         if self.numeric_imputer == "random_forest":
             return RandomForestRegressor(
                 n_estimators=50,
-                random_state=self.random_state
+                random_state=self.random_state,
             )
         if self.numeric_imputer == "bayesian":
             return BayesianRidge()
         raise ValueError("numeric_imputer must be 'bayesian' or 'random_forest'")
 
     def _clean_raw(self, df: pd.DataFrame, drop_duplicates: bool = False, fit: bool = False) -> pd.DataFrame:
-        """ basic cleaning of raw data: replace "?" with NaN, convert to numeric, create missing flags, and handle missing values."""
+        """Basic cleaning before imputation and feature engineering."""
         df = df.copy().replace("?", np.nan)
 
         if drop_duplicates:
@@ -86,42 +102,78 @@ class DataCleaner:
             df["age_group"] = self.age_imputer.transform(df[["age_group"]]).ravel()
             df["english_grade"] = self.eng_imputer.transform(df[["english_grade"]]).ravel()
 
-        # Nominal columns
-        raw_nominal_cols = [
-            col for col in self.nominal_cols if col not in {"previous_education"}
-        ]
-        df[raw_nominal_cols] = df[raw_nominal_cols].fillna(0).astype(int)   # 0 = Missing
-        df["previous_education"] = df["previous_education"].fillna(3).astype(int)  # 0 = Unknown, 3 = Missing
+        df[self.zero_fill_nominal_cols] = df[self.zero_fill_nominal_cols].fillna(0).astype(int)
+        df["previous_education"] = df["previous_education"].fillna(3).astype(int)
 
         return df
-    
+
+    def _add_interactions(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add the engineered numeric features used by v1."""
+        df = df.copy()
+
+        gpa_pct = (df["first_term_gpa"] / 4.5) * 100.0
+        math_pct = df["math_score"] * 2.0
+
+        df["hs_math_interaction"] = df["high_school_average_mark"] * df["math_score"]
+        df["gpa_hs_interaction"] = df["first_term_gpa"] * df["high_school_average_mark"]
+        df["gpa_math_interaction"] = df["first_term_gpa"] * df["math_score"]
+        df["gpa_english_interaction"] = df["first_term_gpa"] * df["english_grade"]
+        df["first_term_gpa_sq"] = df["first_term_gpa"] ** 2
+        df["preparedness_gap"] = df["high_school_average_mark"] - gpa_pct
+        df["hs_math_gap"] = df["high_school_average_mark"] - math_pct
+        df["missing_count"] = df[[f"{col}_missing" for col in self.missing_flag_cols]].sum(axis=1)
+
+        return df
+
+    def _add_gpa_category(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Create the GPA categorical feature including Zero / Low / Medium / High."""
+
+        def categorize(gpa):
+            if gpa == 0:
+                return 0
+            if gpa < 2.0:
+                return 1
+            if gpa < 3.0:
+                return 2
+            return 3
+
+        df["gpa_category"] = df["first_term_gpa"].apply(categorize)
+        return df
+
     def _clip_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
-        """clipping out of range values for numeric columns based on given constraints """
+        """Clip numeric columns to the expected ranges."""
         df["first_term_gpa"] = df["first_term_gpa"].clip(0, 4.5)
         df["high_school_average_mark"] = df["high_school_average_mark"].clip(0, 100)
         df["math_score"] = df["math_score"].clip(0, 50)
         return df
 
     def _encode_nominals(self, df: pd.DataFrame) -> pd.DataFrame:
-        """one-hot encode nominal columns"""
+        """One-hot encode nominal columns."""
         return pd.get_dummies(df, columns=self.nominal_cols, drop_first=False)
 
+    def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply post-imputation feature engineering in one place."""
+        df = self._clip_numeric(df)
+        df = self._add_gpa_category(df)
+        df = self._add_interactions(df)
+        return df
+
     def fit(self, X_train: pd.DataFrame):
-        """ fit the imputer and scaler on the training data, and determine the final feature columns after encoding """
+        """Fit the imputer and scaler on the training data."""
         df = self._clean_raw(X_train, drop_duplicates=True, fit=True)
 
         self.imputer = IterativeImputer(
             estimator=self._get_estimator(),
             max_iter=15,
             random_state=self.random_state,
-            initial_strategy="median"
+            initial_strategy="median",
         )
 
         df[self.numeric_cols] = self.imputer.fit_transform(df[self.numeric_cols])
-        df = self._clip_numeric(df)
+        df = self._prepare_features(df)
 
         self.scaler = StandardScaler()
-        df[self.numeric_cols] = self.scaler.fit_transform(df[self.numeric_cols])
+        df[self.scaled_cols] = self.scaler.fit_transform(df[self.scaled_cols])
 
         df = self._encode_nominals(df)
 
@@ -130,24 +182,21 @@ class DataCleaner:
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """ apply the same transformations to new data, used for validation and testing """
+        """Apply the fitted preprocessing pipeline to new data."""
         if not self.is_fitted_:
             raise ValueError("Call fit() before transform().")
 
         df = self._clean_raw(X, drop_duplicates=False)
 
         df[self.numeric_cols] = self.imputer.transform(df[self.numeric_cols])
-
-        df = self._clip_numeric(df)
-
-        df[self.numeric_cols] = self.scaler.transform(df[self.numeric_cols])
+        df = self._prepare_features(df)
+        df[self.scaled_cols] = self.scaler.transform(df[self.scaled_cols])
 
         df = self._encode_nominals(df)
-
         df = df.reindex(columns=self.feature_columns_, fill_value=0)
         return df
 
     def fit_transform(self, X_train: pd.DataFrame) -> pd.DataFrame:
-        """method to fit and transform the training data in one step, for convenience during model training"""
+        """Fit and transform the training data in one step."""
         self.fit(X_train)
         return self.transform(X_train)
