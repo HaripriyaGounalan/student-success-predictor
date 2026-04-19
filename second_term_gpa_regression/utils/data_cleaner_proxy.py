@@ -24,15 +24,8 @@ class DataCleaner:
         self.ordinal_cols = ["age_group", "english_grade"]
 
         self.missing_flag_cols = [
-            "first_term_gpa",
             "second_term_gpa",
             "high_school_average_mark",
-            "math_score",
-            "first_language",
-            "funding",
-            "gender",
-            "previous_education",
-            "age_group",
             "english_grade",
         ]
 
