@@ -3,3 +3,7 @@ pandas
 matplotlib
 seaborn
 skimpy
+scikit-learn
+joblib
+tensorflow
+keras-tuner
