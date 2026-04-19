@@ -40,7 +40,6 @@ class DataCleaner:
             "first_term_gpa_sq",
             "preparedness_gap",
             "hs_math_gap",
-    
         ]
         self.scaled_cols = self.numeric_cols + self.engineered_feature_cols
 
@@ -121,7 +120,6 @@ class DataCleaner:
         df["first_term_gpa_sq"] = df["first_term_gpa"] ** 2
         df["preparedness_gap"] = df["high_school_average_mark"] - gpa_pct
         df["hs_math_gap"] = df["high_school_average_mark"] - math_pct
-        df["missing_count"] = df[[f"{col}_missing" for col in self.missing_flag_cols]].sum(axis=1)
 
         return df
 
