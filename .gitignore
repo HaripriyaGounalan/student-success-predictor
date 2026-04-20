@@ -9,5 +9,5 @@ venv/
 env/
 tuner/
 .venv-wsl/
-temp_tuner_test/
-temp_tuner_test_validation/
+tmp_tuner_test/
+tmp_tuner_test_validation/
