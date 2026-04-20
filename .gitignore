@@ -8,3 +8,6 @@ __pycache__/
 venv/
 env/
 tuner/
+.venv-wsl/
+temp_tuner_test/
+temp_tuner_test_validation/
