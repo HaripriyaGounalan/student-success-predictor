@@ -1,7 +1,7 @@
 # Add project folder to sys.path
 import sys
 from pathlib import Path
-project_path = Path(r"C:\Users\Vivek K\Haripriya\Sem_5\Neural Networks\Final_Project\student-success-predictor")
+project_path = Path(r"add-your-project-path-here\student-success-predictor")
 sys.path.append(str(project_path))
 
 import joblib
