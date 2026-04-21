@@ -1,12 +1,11 @@
 # Add project folder to sys.path
 import sys
 from pathlib import Path
-project_path = Path(r"add_your_project_path_here")  # <-- Update this to your actual project path
+project_path = Path(r"C:\Users\Vivek K\Haripriya\Sem_5\Neural Networks\Final_Project\student-success-predictor")
 sys.path.append(str(project_path))
 
 import joblib
 import pandas as pd
-from custom_metrics import RMSEMetric, R2Metric
 from keras.models import load_model
 
 # ------ Main Prediction Function ------
@@ -27,7 +26,7 @@ def predict_gpa(
     # Load artifacts
     pipeline = joblib.load(preprocessing_pipeline_path)
     scaler = joblib.load(target_scaler_path)
-    model = load_model(model_path, custom_objects={"RMSEMetric": RMSEMetric, "R2Metric": R2Metric})
+    model = load_model(model_path, compile=False)
 
     # Predict (scaled → original)
     X_processed = pipeline.transform(X)
