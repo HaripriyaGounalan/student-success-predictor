@@ -8,3 +8,7 @@ __pycache__/
 venv/
 env/
 frontend/node_modules
+tuner/
+.venv-wsl/
+tmp_tuner_test/
+tmp_tuner_test_validation/
