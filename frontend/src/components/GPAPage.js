@@ -165,16 +165,34 @@ function GPAPage({ data }) {
           )}
         </div>
 
-        <div className="card">
-          <div className="card-title">Model summary</div>
-          <SummaryStat data={[
-            { key: "Best architecture", val: "2L-128-64-ReLU-Batch64" },
-            { key: "Test RMSE",         val: "0.2951"                 },
-            { key: "Test MAE",          val: "0.2080"                 },
-            { key: "Test R²",           val: "90.92%"                 },
-            { key: "Training epochs",   val: "90"                     },
-            { key: "Input features",    val: "13"                     },
-          ]} />
+        <div className="two-col">
+          <div className="card">
+            <div className="card-title">Second Term GPA</div>
+            <SummaryStat data={[
+              { key: "Best Architecture", val: "2L-512-Tanh-D0.1-128-ELU-D0.2-SGD-LR0.0009-BS32" },
+              { key: "Test RMSE", val: "0.558661" },
+              { key: "Test MAE", val: "0.423561" },
+              { key: "Test R²", val: "0.714179" },
+              { key: "Training Epochs", val: "65" },
+              { key: "Total features", val: "21" },
+              { key: "Missing flags", val: "9" },
+              { key: "Original columns", val: "12" },
+            ]} />
+          </div>
+          <div className="card">
+            <div className="card-title">Relay Third Term GPA</div>
+            <SummaryStat data={[
+              { key: "Best Architecture", val: "2L-512-Tanh-D0.1-128-ELU-D0.2-SGD-LR0.0009-BS32" },
+              { key: "Test RMSE", val: "0.345779" },
+              { key: "Test MAE", val: "0.256132" },
+              { key: "Test R²", val: "0.917617" },
+              { key: "Training Epochs", val: "148" },
+              { key: "Total features", val: "18" },
+              { key: "Original features", val: "14" },
+              { key: "Missing flags", val: "3" },
+              { key: "GPA gate feature", val: "engineered" },
+            ]} />
+          </div>
         </div>
 
         <div className="card" style={{ marginTop: "1.2rem" }}>
