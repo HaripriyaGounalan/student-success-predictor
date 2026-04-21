@@ -1,103 +1,220 @@
 import React from "react";
 import { useState } from "react";
 import SummaryStat from "./SummaryStat";
-import theme from "../theme";
 
 function GPAPage({ data }) {
-  const [tab, setTab] = useState(0);
-    const [result, setResult] = useState(null);
-    const [form, setForm] = useState({
-      firstGpa: "3.2", hsAvg: "78", math: "32", english: "7", secondGpa: "3.4",
-    });
-  
-    const predict = () => {
-      const g = parseFloat(form.firstGpa) || 3.0;
-      const h = parseFloat(form.hsAvg)    || 75;
-      const s = tab === 1 ? parseFloat(form.secondGpa) || 3.0 : 0;
-      const p = Math.min(4.5, Math.max(0, g * 0.72 + (h / 100) * 0.8 + (tab === 1 ? s * 0.15 : 0) + 0.2));
-      setResult(p.toFixed(2));
-    };
-  
-    const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
-  
-    return (
-      <>
-        <div className="page-header">
-          <div className="page-title">GPA predictor</div>
-          <div className="page-desc">Predict second term GPA — Task 1 baseline or Task 2 transfer learning</div>
-        </div>
-        <div className="two-col">
-          <div className="card">
-            <div className="card-title">Input</div>
-            <div className="tabs">
-              {["Task 1 — predict 2nd term", "Task 2 — transfer learning"].map((t, i) => (
-                <div
-                  key={i}
-                  className={`tab ${tab === i ? "active" : ""}`}
-                  onClick={() => { setTab(i); setResult(null); }}
-                >
-                  {t}
-                </div>
-              ))}
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    first_term_gpa: "3.1", first_language: "1", funding: "2", fast_track: "1",
+    coop: "2", residency: "1", gender: "1", previous_education: "1",
+    age_group: "4", english_grade: "5", first_year_persistence: "1",
+    high_school_average_mark: "78.5", math_score: "42",
+  });
+
+  const predict = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/predict/chained-gpa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_term_gpa: parseFloat(form.first_term_gpa),
+          first_language: parseInt(form.first_language),
+          funding: parseInt(form.funding),
+          fast_track: parseInt(form.fast_track),
+          coop: parseInt(form.coop),
+          residency: parseInt(form.residency),
+          gender: parseInt(form.gender),
+          previous_education: parseInt(form.previous_education),
+          age_group: parseInt(form.age_group),
+          english_grade: parseInt(form.english_grade),
+          first_year_persistence: parseInt(form.first_year_persistence),
+          high_school_average_mark: parseFloat(form.high_school_average_mark),
+          math_score: parseFloat(form.math_score),
+        }),
+      });
+      const json = await res.json();
+      setResult(json);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
+  return (
+    <>
+      <div className="page-header">
+        <div className="page-title">GPA predictor</div>
+        <div className="page-desc">Predict second and third term GPA using chained prediction</div>
+      </div>
+      <div className="two-col">
+        <div className="card">
+          <div className="card-title">Input</div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">First term GPA</div>
+              <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.first_term_gpa} onChange={update("first_term_gpa")} />
             </div>
-  
-            <div className="form-row">
-              <div className="form-group">
-                <div className="form-label">First term GPA</div>
-                <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.firstGpa} onChange={update("firstGpa")} />
-              </div>
-              <div className="form-group">
-                <div className="form-label">HS average mark</div>
-                <input className="form-input" type="number" min="0" max="100" value={form.hsAvg} onChange={update("hsAvg")} />
-              </div>
+            <div className="form-group">
+              <div className="form-label">HS average mark</div>
+              <input className="form-input" type="number" min="0" max="100" value={form.high_school_average_mark} onChange={update("high_school_average_mark")} />
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <div className="form-label">Math score</div>
-                <input className="form-input" type="number" min="0" max="50" value={form.math} onChange={update("math")} />
-              </div>
-              <div className="form-group">
-                <div className="form-label">English grade</div>
-                <input className="form-input" type="number" min="1" max="11" value={form.english} onChange={update("english")} />
-              </div>
-            </div>
-            {tab === 1 && (
-              <div className="form-row">
-                <div className="form-group">
-                  <div className="form-label">Second term GPA (known)</div>
-                  <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.secondGpa} onChange={update("secondGpa")} />
-                </div>
-              </div>
-            )}
-  
-            <button className="predict-btn" onClick={predict}>
-              {tab === 0 ? "Predict second term GPA" : "Predict future GPA"}
-            </button>
-            {result && (
-              <div className="result-box">
-                <div className="result-label">{tab === 0 ? "Predicted second term GPA" : "Predicted future GPA"}</div>
-                <div className="result-value">{result} / 4.5</div>
-                <div className="result-conf">
-                  95% interval: {Math.max(0, parseFloat(result) - 0.57).toFixed(2)} – {Math.min(4.5, parseFloat(result) + 0.57).toFixed(2)}
-                </div>
-              </div>
-            )}
           </div>
-  
-          <div className="card">
-            <div className="card-title">Model summary</div>
-            <SummaryStat data={[
-              { key: "Best architecture", val: tab === 0 ? "1L-128-ReLU-RMSprop"    : "2L-128-64-ReLU-Batch64"   },
-              { key: "Test RMSE",         val: tab === 0 ? "0.5701"                 : "0.2951"                   },
-              { key: "Test MAE",          val: tab === 0 ? "0.4183"                 : "0.2080"                   },
-              { key: "Test R²",           val: tab === 0 ? "76.94%"                 : "90.92%"                   },
-              { key: "Training epochs",   val: tab === 0 ? "61"                     : "90"                       },
-              { key: "Input features",    val: tab === 0 ? "10"                     : "11 (+ 2nd term GPA)"      },
-            ]} />
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Math score</div>
+              <input className="form-input" type="number" min="0" max="50" value={form.math_score} onChange={update("math_score")} />
+            </div>
+            <div className="form-group">
+              <div className="form-label">English grade</div>
+              <input className="form-input" type="number" min="1" max="11" value={form.english_grade} onChange={update("english_grade")} />
+            </div>
           </div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Age group</div>
+              <input className="form-input" type="number" min="1" value={form.age_group} onChange={update("age_group")} />
+            </div>
+            <div className="form-group">
+              <div className="form-label">First year persistence</div>
+              <select className="form-input" value={form.first_year_persistence} onChange={update("first_year_persistence")}>
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Residency</div>
+              <select className="form-input" value={form.residency} onChange={update("residency")}>
+                <option value="1">Domestic</option>
+                <option value="2">International</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <div className="form-label">Funding</div>
+              <select className="form-input" value={form.funding} onChange={update("funding")}>
+                <option value="2">GPOG FT</option>
+                <option value="1">Apprentice PS</option>
+                <option value="3">Intl Offshore</option>
+                <option value="4">Intl Regular</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Gender</div>
+              <select className="form-input" value={form.gender} onChange={update("gender")}>
+                <option value="1">Male</option>
+                <option value="2">Female</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <div className="form-label">First language</div>
+              <select className="form-input" value={form.first_language} onChange={update("first_language")}>
+                <option value="1">English</option>
+                <option value="2">Other</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Previous education</div>
+              <select className="form-input" value={form.previous_education} onChange={update("previous_education")}>
+                <option value="1">High school</option>
+                <option value="2">College</option>
+                <option value="3">University</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <div className="form-label">Fast track</div>
+              <select className="form-input" value={form.fast_track} onChange={update("fast_track")}>
+                <option value="1">Yes</option>
+                <option value="2">No</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <div className="form-label">Coop</div>
+              <select className="form-input" value={form.coop} onChange={update("coop")}>
+                <option value="1">Yes</option>
+                <option value="2">No</option>
+              </select>
+            </div>
+          </div>
+
+          <button className="predict-btn" onClick={predict} disabled={loading}>
+            {loading ? "Predicting..." : "Predict GPA"}
+          </button>
+
+          {result && (
+            <div className="result-box">
+              <div className="result-label">Predicted second term GPA</div>
+              <div className="result-value">{result.predicted_second_term_gpa} / 4.5</div>
+              <div className="result-label">Predicted third term GPA</div>
+              <div className="result-value">{result.predicted_third_term_gpa} / 4.5</div>
+              <div className="result-conf">
+                Second term GPA source: {result.second_gpa_source}
+              </div>
+            </div>
+          )}
         </div>
-      </>
-    );
+
+        <div className="card">
+          <div className="card-title">Model summary</div>
+          <SummaryStat data={[
+            { key: "Best architecture", val: "2L-128-64-ReLU-Batch64" },
+            { key: "Test RMSE",         val: "0.2951"                 },
+            { key: "Test MAE",          val: "0.2080"                 },
+            { key: "Test R²",           val: "90.92%"                 },
+            { key: "Training epochs",   val: "90"                     },
+            { key: "Input features",    val: "13"                     },
+          ]} />
+        </div>
+
+        <div className="card" style={{ marginTop: "1.2rem" }}>
+          <div className="card-title">Custom Model Metrics</div>
+          <img
+            src="/ap_results_01.png"
+            alt="Custom Model Metrics"
+            style={{ width: "100%", borderRadius: "8px", marginTop: "0.5rem" }}
+          />
+        </div>
+
+        <div className="card" style={{ marginTop: "1.2rem" }}>
+          <div className="card-title">Custom Actual vs. Predicted</div>
+          <img
+            src="/ap_results_02.png"
+            alt="Custom Actual vs. Predicted"
+            style={{ width: "100%", borderRadius: "8px", marginTop: "0.5rem" }}
+          />
+        </div>
+
+        <div className="card" style={{ marginTop: "1.2rem" }}>
+          <div className="card-title">Relay Model Metrics</div>
+          <img
+            src="/ap_results_03.png"
+            alt="Relay Model Metrics"
+            style={{ width: "100%", borderRadius: "8px", marginTop: "0.5rem" }}
+          />
+        </div>
+
+        <div className="card" style={{ marginTop: "1.2rem" }}>
+          <div className="card-title">Relay Actual vs. Predicted</div>
+          <img
+            src="/ap_results_04.png"
+            alt="Relay Actual vs. Predicted"
+            style={{ width: "100%", borderRadius: "8px", marginTop: "0.5rem" }}
+          />
+        </div>
+      </div>
+    </>
+  );
 }
 
 export default GPAPage;
