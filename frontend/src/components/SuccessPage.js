@@ -62,6 +62,16 @@ function SuccessPage({ data }) {
 
   const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
+  const clamp = (key, min, max) => () => {
+    setForm((f) => {
+      const v = f[key];
+      if (v === "") return f;
+      const n = parseFloat(v);
+      if (isNaN(n)) return { ...f, [key]: "" };
+      return { ...f, [key]: String(Math.min(max, Math.max(min, n))) };
+    });
+  };
+
   const probPct = result ? (result.probability * 100).toFixed(1) : null;
 
   return (
@@ -76,21 +86,21 @@ function SuccessPage({ data }) {
           <div className="form-row">
             <div className="form-group">
               <div className="form-label">First term GPA</div>
-              <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.firstGpa} onChange={update("firstGpa")} placeholder="0.0 - 4.5" />
+              <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.firstGpa} onChange={update("firstGpa")} onBlur={clamp("firstGpa", 0, 4.5)} placeholder="0.0 - 4.5 or Leave blank if unknown" />
             </div>
             <div className="form-group">
               <div className="form-label">HS average mark (optional)</div>
-              <input className="form-input" type="number" min="0" max="100" value={form.hsAvg} onChange={update("hsAvg")} placeholder="Leave blank if unknown" />
+              <input className="form-input" type="number" min="0" max="100" value={form.hsAvg} onChange={update("hsAvg")} onBlur={clamp("hsAvg", 0, 100)} placeholder="0 - 100 or Leave blank if unknown" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <div className="form-label">Math score (optional)</div>
-              <input className="form-input" type="number" min="0" max="50" value={form.math} onChange={update("math")} placeholder="Leave blank if unknown" />
+              <input className="form-input" type="number" min="0" max="50" value={form.math} onChange={update("math")} onBlur={clamp("math", 0, 50)} placeholder="0 - 50 or Leave blank if unknown" />
             </div>
             <div className="form-group">
               <div className="form-label">English grade</div>
-              <input className="form-input" type="number" min="1" max="10" value={form.english} onChange={update("english")} />
+              <input className="form-input" type="number" min="1" max="10" value={form.english} onChange={update("english")} onBlur={clamp("english", 1, 10)} placeholder="1 - 10 or Leave blank if unknown"/>
             </div>
           </div>
           <div className="form-row">
@@ -161,10 +171,10 @@ function SuccessPage({ data }) {
           )}
 
           {result && (
-            <div className="result-box">
-              <div className="result-label">Probability of completing the program</div>
-              <div className="result-value">{probPct}%</div>
-              <div className="result-conf">
+            <div className={`result-box${result.completed === 0 ? " result-box--danger" : ""}`}>
+              <div className={`result-label${result.completed === 0 ? " result-box--danger" : ""}`}>Probability of completing the program</div>
+              <div className={`result-value${result.completed === 0 ? " result-box--danger" : ""}`}>{probPct}%</div>
+              <div className={`result-conf${result.completed === 0 ? " result-box--danger" : ""}`}>
                 {result.completed === 1
                   ? parseFloat(probPct) >= 75
                     ? "On track — high confidence"

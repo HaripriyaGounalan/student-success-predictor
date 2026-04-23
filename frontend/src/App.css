@@ -434,22 +434,57 @@
   margin-top: 10px;
 }
 
+.result-box.result-box--danger {
+  background: #FEF2F2;
+  border-color: #DC2626aa;
+}
+
 .result-label {
-  font-size: 11px;
+  font-size: 30px;
   color: #059669;
+  font-weight: 500;
+}
+
+.result-label.result-box--danger {
+  font-size: 30px;
+  color: #DC2626;
   font-weight: 500;
 }
 
 .result-value {
   font-family: 'Space Mono', monospace;
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   color: #059669;
   margin: 3px 0;
 }
 
+.result-value.result-box--danger {
+  font-family: 'Space Mono', monospace;
+  font-size: 32px;
+  font-weight: 700;
+  color: #DC2626;
+  margin: 3px 0;
+}
+
+.result-action {
+  font-family: 'Space Mono', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: #059669;
+  margin: 3px 0;
+}
+
+.result-action.result-box--danger {
+  font-family: 'Space Mono', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: #DC2626;
+  margin: 3px 0;
+}
+
 .result-conf {
-  font-size: 11px;
+  font-size: 22px;
   color: #05966999;
 }
 

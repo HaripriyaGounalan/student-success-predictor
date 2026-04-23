@@ -6,10 +6,10 @@ function GPAPage({ data }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    first_term_gpa: "3.1", first_language: "1", funding: "2", fast_track: "1",
+    first_term_gpa: "", first_language: "1", funding: "2", fast_track: "1",
     coop: "2", residency: "1", gender: "1", previous_education: "1",
     age_group: "4", english_grade: "5", first_year_persistence: "1",
-    high_school_average_mark: "78.5", math_score: "42",
+    high_school_average_mark: "", math_score: "",
   });
 
   const predict = async () => {
@@ -45,6 +45,16 @@ function GPAPage({ data }) {
 
   const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
+  const clamp = (key, min, max) => () => {
+    setForm((f) => {
+      const v = f[key];
+      if (v === "") return f;
+      const n = parseFloat(v);
+      if (isNaN(n)) return { ...f, [key]: "" };
+      return { ...f, [key]: String(Math.min(max, Math.max(min, n))) };
+    });
+  };
+
   return (
     <>
       <div className="page-header">
@@ -57,17 +67,17 @@ function GPAPage({ data }) {
           <div className="form-row">
             <div className="form-group">
               <div className="form-label">First term GPA</div>
-              <input className="form-input" type="number" step="0.1" min="0" max="4.5" value={form.first_term_gpa} onChange={update("first_term_gpa")} />
+              <input className="form-input" type="number" step="0.1" placeholder="0.0 – 4.5" value={form.first_term_gpa} onChange={update("first_term_gpa")} onBlur={clamp("first_term_gpa", 0, 4.5)} />
             </div>
             <div className="form-group">
               <div className="form-label">HS average mark</div>
-              <input className="form-input" type="number" min="0" max="100" value={form.high_school_average_mark} onChange={update("high_school_average_mark")} />
+              <input className="form-input" type="number" step="0.1" placeholder="0.0 – 100.0" value={form.high_school_average_mark} onChange={update("high_school_average_mark")} onBlur={clamp("high_school_average_mark", 0, 100)} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <div className="form-label">Math score</div>
-              <input className="form-input" type="number" min="0" max="50" value={form.math_score} onChange={update("math_score")} />
+              <input className="form-input" type="number" step="0.1" placeholder="0.0 – 50.0" value={form.math_score} onChange={update("math_score")} onBlur={clamp("math_score", 0, 50)} />
             </div>
             <div className="form-group">
               <div className="form-label">English grade</div>
@@ -153,13 +163,20 @@ function GPAPage({ data }) {
           </button>
 
           {result && (
-            <div className="result-box">
-              <div className="result-label">Predicted second term GPA</div>
-              <div className="result-value">{result.predicted_second_term_gpa} / 4.5</div>
-              <div className="result-label">Predicted third term GPA</div>
-              <div className="result-value">{result.predicted_third_term_gpa} / 4.5</div>
-              <div className="result-conf">
-                Second term GPA source: {result.second_gpa_source}
+            <div className="two-col">
+              <div className={`result-box${result.predicted_second_term_gpa < 2
+                  ? " result-box--danger"
+                  : ""
+                }`}>
+                <div className={`result-label${result.predicted_second_term_gpa < 2 ? " result-box--danger" : ""}`}>Predicted second term GPA</div>
+                <div className={`result-value${result.predicted_second_term_gpa < 2 ? " result-box--danger" : ""}`}>{result.predicted_second_term_gpa} / 4.5</div>
+              </div>
+              <div className={`result-box${result.predicted_third_term_gpa < 2
+                  ? " result-box--danger"
+                  : ""
+                }`}>
+                <div className={`result-label${result.predicted_third_term_gpa < 2 ? " result-box--danger" : ""}`}>Predicted third term GPA</div>
+                <div className={`result-value${result.predicted_third_term_gpa < 2 ? " result-box--danger" : ""}`}>{result.predicted_third_term_gpa} / 4.5</div>
               </div>
             </div>
           )}
